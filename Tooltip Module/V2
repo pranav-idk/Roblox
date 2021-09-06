@@ -1,0 +1,152 @@
+local tooltip = {}
+
+local playersService = game:GetService("Players")
+local userInputService = game:GetService("UserInputService")
+local workspace = game:GetService("Workspace")
+
+function tooltip.new(object, text)
+	assert(typeof(object) == "Instance" and object:IsA("GuiBase"), ("Invalid parameter 1 (GuiBase expected, got %s)"):format(tostring(object)))
+	text = typeof(text) == "string" and text or tooltip._Log("Invalid parameter for text, setting default") and "Tooltip"
+
+	local self = setmetatable({
+		Player = playersService.LocalPlayer,
+		Object = object,
+		Text = text,
+		Gui = tooltip._CreateGui(),
+		Offset = UDim2.new(0, 0, 0.05, 0),
+		Padding = Vector2.new(0.025, 0.125),
+	}, tooltip)
+
+	self._MoveConnection = object.MouseMoved:Connect(function() self:Show() end)
+	self._LeaveConnection = object.MouseLeave:Connect(function() self:Hide() end)
+
+	return self
+end
+
+function tooltip:Show()
+	local mp = userInputService:GetMouseLocation()
+	local vp = workspace.CurrentCamera.ViewportSize
+	
+	local playerGui = self.Player:FindFirstChild("PlayerGui")
+	if not playerGui then self._Log("PlayerGui not found in LocalPlayer") return end
+	
+	self.Gui = self.Gui == nil and self._Log("No Gui associated with the tooltip, creating one") and self._CreateGui() or self.Gui
+	self.Gui.Name = ("Tooltip_%s"):format(tostring(self.Object))
+	
+	local frame = self.Gui:FindFirstChildOfClass("Frame")
+	assert(frame ~= nil, ("No Frame in %s found"):format(tostring(self.Gui)))
+	
+	local text = frame:FindFirstChildOfClass("TextLabel")
+	assert(text ~= nil, ("No TextLabel in %s.Frame found"):format(tostring(self.Gui)))
+
+	frame.Position = UDim2.new(mp.X / vp.X, 0, mp.Y / vp.Y, 0) + self.Offset
+	text.Text = self.Text
+
+	text.Size = UDim2.new(1000, 0, 1 - (self.Padding.Y * 2), 0)
+	frame.Size = UDim2.new((text.TextBounds.X / vp.X) + self.Padding.X, 0, frame.Size.Y.Scale, 0)
+	text.Size = UDim2.new(1, 0, text.Size.Y.Scale, 0)
+
+	for _,c in ipairs(playerGui:GetChildren()) do
+		if c:IsA("ScreenGui") and c.DisplayOrder > self.Gui.DisplayOrder then
+			self.Gui.DisplayOrder = c.DisplayOrder + 1
+		end
+	end
+
+	frame.Visible = true
+	self.Gui.Parent = playerGui
+
+	return self
+end
+tooltip.show = tooltip.Show
+
+function tooltip:Hide()
+	self.Gui = self.Gui == nil and self._Log("No Gui associated with the tooltip, creating one") and self._CreateGui() or self.Gui
+	local frame = self.Gui:FindFirstChildOfClass("Frame")
+	assert(frame ~= nil, ("No Frame in %s found"):format(tostring(self.Gui)))
+
+	frame.Visible = false
+	self.Gui.Parent = nil
+
+	return self
+end
+tooltip.hide = tooltip.Hide
+
+function tooltip:SetText(text)
+	text = text and tostring(text) or self._Log("Text parameter not passed, set default text") and "Tooltip"
+	self.Text = text
+	if self.Gui and typeof(self.Gui) == "Instance" and self.Gui:IsA("ScreenGui") and self.Gui.Parent ~= nil then self:Show() end
+	return self
+end
+
+function tooltip:SetOffset(offset)
+	offset = offset and typeof(offset) == "UDim2" and offset or self._Log("Offset parameter not passed, set default offset") and UDim2.new(0, 0, 0.05, 0)
+	self.Offset = offset
+	if self.Gui and typeof(self.Gui) == "Instance" and self.Gui:IsA("ScreenGui") and self.Gui.Parent ~= nil then self:Show() end
+	return self
+end
+
+function tooltip:SetPadding(padding)
+	padding = padding and typeof(padding) == "Vector2" and padding or self._Log("Padding parameter not passed, set default padding") and Vector2.new(0.025, 0.125)
+	self.Padding = padding
+	if self.Gui and typeof(self.Gui) == "Instance" and self.Gui:IsA("ScreenGui") and self.Gui.Parent ~= nil then self:Show() end
+	return self
+end
+
+function tooltip:Disconnect()
+	if self._MoveConnection then self._MoveConnection:Disconnect() end
+	if self._LeaveConnection then self._LeaveConnection:Disconnect() end
+	self.Gui:Destroy()
+	table.clear(self)
+	return nil
+end
+tooltip.disconnect = tooltip.Disconnect
+tooltip.Destroy = tooltip.Disconnect
+tooltip.destroy = tooltip.Disconnect
+
+function tooltip._Log(msg)
+	msg = msg ~= nil and tostring(msg) or "Unspecified error"
+	warn(("[%s Module]: %s"):format(tostring(script), msg))
+	return true
+end
+
+function tooltip._CreateGui()
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "Tooltip"
+	gui.IgnoreGuiInset = true
+	gui.ResetOnSpawn = false
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(0, 0, 0.035, 0)
+	frame.BorderColor3 = Color3.new(1, 1, 1)
+	frame.BackgroundColor3 = Color3.new(50 / 255, 50 / 255, 50 / 255)
+	frame.BackgroundTransparency = 0.25
+	frame.AnchorPoint = Vector2.new(0.5, 0)
+	frame.ZIndex = 10
+
+	local text = Instance.new("TextLabel")
+	text.AnchorPoint = Vector2.new(0.5, 0.5)
+	text.BackgroundTransparency = 1
+	text.Name = "HoverText"
+	text.Position = UDim2.new(0.5, 0, 0.5, 0)
+	text.Size = UDim2.new(1, 0, 0.5, 0)
+	text.Font = Enum.Font.Gotham
+	text.TextColor3 = Color3.new(1, 1, 1)
+	text.TextScaled = true
+	text.TextWrapped = true
+
+	text.Parent = frame
+	frame.Parent = gui
+
+	return gui
+end
+
+tooltip.__index = tooltip
+tooltip.__newindex = function(self, index, value)
+	local success = pcall(function()
+		self.Gui:FindFirstChildOfClass("Frame"):FindFirstChildOfClass("TextLabel")[index] = value
+	end)
+	if not success then rawset(self, index, value) end
+end
+
+return tooltip.new
