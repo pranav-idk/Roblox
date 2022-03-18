@@ -14,18 +14,39 @@ local icons = {
 local ORIGINAL_VOLUME = 0.35
 
 local Player = {
-	CurrentSong = songs[1],
-	Queue = { table.unpack(songs) },
+	CurrentIndex = 1,
+	Songs = { table.unpack(songs) },
 	Paused = false,
-	Volume = ORIGINAL_VOLUME
+	Volume = ORIGINAL_VOLUME,
+	PlayNext = Instance.new("BindableEvent"),
 }
-table.remove(Player.Queue, 1)
+
+local function changeIndex(i)
+	i = tonumber(i) or 1
+	local ni = Player.CurrentIndex + i
+	local sl = #Player.Songs
+	
+	if ni > sl then
+		ni -= sl
+	elseif ni < 1 then
+		ni += sl
+	end
+	
+	Player.CurrentIndex = ni
+end
+
+local function fireNext()
+	Player.PlayNext:Fire()
+end
 
 local song = script:FindFirstChild("Sound") or script:WaitForChild("Sound")
 
 local gui = script.Parent
 local container = gui.Frame.Container
 local buttons = container.Buttons
+
+song.Ended:Connect(fireNext)
+song.Stopped:Connect(fireNext)
 
 buttons.Mute.MouseButton1Click:Connect(function()
 	Player.Volume = Player.Volume == 0 and ORIGINAL_VOLUME or 0
@@ -38,7 +59,7 @@ buttons.Pause.MouseButton1Click:Connect(function()
 end)
 
 buttons.Previous.MouseButton1Click:Connect(function()
-	table.insert(Player.Queue, 1, Player.Queue[#Player.Queue])
+	Player.CurrentIndex -= 2
 	song:Stop()
 end)
 
@@ -61,19 +82,12 @@ game:GetService("RunService").Heartbeat:Connect(function()
 end)
 
 while true do
-	song.SoundId = Player.CurrentSong.Id
-	container.SongName.Text = Player.CurrentSong.Name
+	local currentSong = Player.Songs[Player.CurrentIndex]
+	song.SoundId = currentSong.Id
+	container.SongName.Text = currentSong.Name
 
 	song:Play()
-	song.Stopped:Wait()
-
-	if Player.Queue[1] == Player.Queue[#Player.Queue] then
-		table.insert(Player.Queue, 2, Player.CurrentSong)
-		table.remove(Player.Queue, #Player.Queue)
-	else
-		Player.Queue[#Player.Queue + 1] = Player.CurrentSong
-	end
-
-	Player.CurrentSong = Player.Queue[1]
-	table.remove(Player.Queue, 1)
+	Player.PlayNext.Event:Wait()
+	
+	changeIndex(1)
 end
